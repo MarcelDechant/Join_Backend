@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = '__all__'
+        fields = ['user', 'bio', 'location', 'email', 'telefonnummer']
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
@@ -36,10 +36,10 @@ class RegistrationSerializer(serializers.ModelSerializer):
          
 
 
-        account = User(email=self.validated_data['email'], username=self.validated_data['username'])
-        
+        account = User(email=email, username=self.validated_data['username'])
         account.set_password(pw)
         account.save()
         
-        UserProfile.objects.create(user=account)
+        
+        user_profile = UserProfile.objects.create(user=account, email=account.email)
         return account
