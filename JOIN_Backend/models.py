@@ -16,6 +16,7 @@ class Contact(models.Model):
     color = models.CharField(max_length=7)
 
 class Task(models.Model):
+    id = models.BigIntegerField(primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tasks')
     category = models.CharField(max_length=50)
     title = models.CharField(max_length=200)

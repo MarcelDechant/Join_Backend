@@ -112,19 +112,16 @@ class UserView(APIView):
 
 class TaskView(APIView):
     def get(self, request, user_email):
-        # Benutzer anhand der E-Mail finden
         try:
             user = User.objects.get(email=user_email)
         except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Tasks für diesen Benutzer holen
         tasks = Task.objects.filter(user=user)
         serializer = TaskSerializer(tasks, many=True)
         return Response(serializer.data)
 
     def post(self, request, *args, **kwargs):
-    # Nutzer-Email aus dem Dispatcher holen
         user_email = getattr(request, 'user_email', None)
         if not user_email:
             return Response({"detail": "User email not provided."}, status=status.HTTP_400_BAD_REQUEST)
@@ -134,7 +131,6 @@ class TaskView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    # Batch-Tasks in request.data verarbeiten
         tasks_data = request.data.get('value', [])
         if not tasks_data:
             return Response({"detail": "No task data provided."}, status=status.HTTP_400_BAD_REQUEST)
@@ -142,23 +138,47 @@ class TaskView(APIView):
         created_tasks = []
         errors = []
 
+        # Holen der IDs aller Aufgaben des Benutzers
+        existing_task_ids = [task.id for task in Task.objects.filter(user=user)]
+
+        # Alle Aufgaben, die im Request enthalten sind, verarbeiten
         for task in tasks_data:
             task['user'] = user.id
-            serializer = TaskSerializer(data=task)
-            if serializer.is_valid():
-                created_task = serializer.save()
-                created_tasks.append(created_task)
+
+            # Aufgabe aktualisieren oder neu erstellen
+            existing_task = Task.objects.filter(id=task['id']).first()
+            
+            if existing_task:
+                # Wenn die Aufgabe existiert, aktualisiere sie
+                serializer = TaskSerializer(existing_task, data=task)
+                if serializer.is_valid():
+                    updated_task = serializer.save()
+                    created_tasks.append(updated_task)
+                else:
+                    errors.append({"task": task, "errors": serializer.errors})
             else:
-                errors.append({"task": task, "errors": serializer.errors})
+                # Wenn die Aufgabe nicht existiert, erstelle sie
+                serializer = TaskSerializer(data=task)
+                if serializer.is_valid():
+                    created_task = serializer.save()
+                    created_tasks.append(created_task)
+                else:
+                    errors.append({"task": task, "errors": serializer.errors})
+
+        # Aufgaben löschen, die nicht mehr im Request enthalten sind
+        task_ids_to_delete = set(existing_task_ids) - {task['id'] for task in tasks_data}
+        if task_ids_to_delete:
+            tasks_to_delete = Task.objects.filter(id__in=task_ids_to_delete, user=user)
+            tasks_to_delete.delete()
 
         if errors:
             return Response({
-                "detail": "Some tasks could not be created.",
+                "detail": "Some tasks could not be created or updated.",
                 "created_tasks": TaskSerializer(created_tasks, many=True).data,
                 "errors": errors
             }, status=status.HTTP_207_MULTI_STATUS)
 
-        return Response(TaskSerializer(created_tasks, many=True).data, status=status.HTTP_201_CREATED)
+        return Response(TaskSerializer(created_tasks, many=True).data, status=status.HTTP_200_OK)
 
 
     
