@@ -7,7 +7,6 @@ class User(models.Model):
     password = models.CharField(max_length=100)
 
 class Contact(models.Model):
-    # Verwende contactId als primären Schlüssel
     contactId = models.UUIDField(primary_key=True, editable=False, unique=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contacts')
     add_name = models.CharField(max_length=100)

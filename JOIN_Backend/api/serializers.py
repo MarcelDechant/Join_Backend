@@ -15,18 +15,14 @@ class ContactSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def create(self, validated_data):
-        print("Validated Data beim Erstellen des Kontakts:", validated_data)
         contact_id = validated_data.get('contactId', None)
-        print("Gefundene contactId:", contact_id)
 
         if not contact_id:
             raise serializers.ValidationError("contactId is required")
-
-        validated_data['contactId'] = contact_id  # Setze den Wert explizit
+        validated_data['contactId'] = contact_id
         contact = Contact(**validated_data)
-        print("Kontakt vor dem Speichern:", contact)
         contact.save()
-        print("Kontakt erfolgreich gespeichert:", contact)
+       
         return contact
 
 class TaskSerializer(serializers.ModelSerializer):
