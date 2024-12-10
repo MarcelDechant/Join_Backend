@@ -138,18 +138,14 @@ class TaskView(APIView):
         created_tasks = []
         errors = []
 
-        # Holen der IDs aller Aufgaben des Benutzers
         existing_task_ids = [task.id for task in Task.objects.filter(user=user)]
 
-        # Alle Aufgaben, die im Request enthalten sind, verarbeiten
         for task in tasks_data:
             task['user'] = user.id
 
-            # Aufgabe aktualisieren oder neu erstellen
             existing_task = Task.objects.filter(id=task['id']).first()
-            
             if existing_task:
-                # Wenn die Aufgabe existiert, aktualisiere sie
+                
                 serializer = TaskSerializer(existing_task, data=task)
                 if serializer.is_valid():
                     updated_task = serializer.save()
@@ -157,7 +153,6 @@ class TaskView(APIView):
                 else:
                     errors.append({"task": task, "errors": serializer.errors})
             else:
-                # Wenn die Aufgabe nicht existiert, erstelle sie
                 serializer = TaskSerializer(data=task)
                 if serializer.is_valid():
                     created_task = serializer.save()
@@ -196,7 +191,6 @@ class ContactView(APIView):
     def post(self, request, *args, **kwargs):
         user_email = getattr(request, 'user_email', None)
         if not user_email:
-
             return Response({"detail": "User email not provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -204,31 +198,62 @@ class ContactView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-
+        # Eingehende Kontakte
         contacts_data = request.data.get('value', [])
         if not contacts_data:
             return Response({"detail": "No contact data provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        created_contacts = []
-        errors = []
+        # Bestehende Kontakte des Benutzers
+        existing_contacts = Contact.objects.filter(user=user)
+        existing_contact_ids = set(existing_contacts.values_list('id', flat=True))
 
+        # IDs der eingehenden Kontakte
+        incoming_contact_ids = {contact.get('id') for contact in contacts_data if 'id' in contact}
+
+        # Kontakte löschen, die nicht mehr im Request enthalten sind
+        contact_ids_to_delete = existing_contact_ids - incoming_contact_ids
+        if contact_ids_to_delete:
+            contacts_to_delete = Contact.objects.filter(id__in=contact_ids_to_delete, user=user)
+            contacts_to_delete.delete()
+
+        created_contacts = []
+        updated_contacts = []
+        errors = []
 
         for contact_data in contacts_data:
             contact_data['user'] = user.id
-            serializer = ContactSerializer(data=contact_data)
-            if serializer.is_valid():
-                created_contact = serializer.save()
 
-                created_contacts.append(created_contact)
+            # Wenn eine ID vorhanden ist, den bestehenden Kontakt aktualisieren
+            if 'id' in contact_data and contact_data['id'] in existing_contact_ids:
+                try:
+                    existing_contact = Contact.objects.get(id=contact_data['id'], user=user)
+                    serializer = ContactSerializer(existing_contact, data=contact_data)
+                    if serializer.is_valid():
+                        updated_contact = serializer.save()
+                        updated_contacts.append(updated_contact)
+                    else:
+                        errors.append({"contact": contact_data, "errors": serializer.errors})
+                except Contact.DoesNotExist:
+                    errors.append({"contact": contact_data, "errors": "Contact not found."})
             else:
-                errors.append({"contact": contact_data, "errors": serializer.errors})
+                # Neuer Kontakt
+                serializer = ContactSerializer(data=contact_data)
+                if serializer.is_valid():
+                    created_contact = serializer.save()
+                    created_contacts.append(created_contact)
+                else:
+                    errors.append({"contact": contact_data, "errors": serializer.errors})
 
-
+        # Rückgabe mit Erfolgen und Fehlern
         if errors:
             return Response({
-                "detail": "Some contacts could not be created.",
+                "detail": "Some contacts could not be processed.",
                 "created_contacts": ContactSerializer(created_contacts, many=True).data,
+                "updated_contacts": ContactSerializer(updated_contacts, many=True).data,
                 "errors": errors
             }, status=status.HTTP_207_MULTI_STATUS)
 
-        return Response(ContactSerializer(created_contacts, many=True).data, status=status.HTTP_201_CREATED)
+        return Response({
+            "created_contacts": ContactSerializer(created_contacts, many=True).data,
+            "updated_contacts": ContactSerializer(updated_contacts, many=True).data,
+        }, status=status.HTTP_201_CREATED)
